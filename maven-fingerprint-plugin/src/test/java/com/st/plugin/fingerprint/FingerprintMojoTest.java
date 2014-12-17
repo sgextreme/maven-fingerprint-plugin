@@ -27,6 +27,7 @@ public class FingerprintMojoTest {
 		// Configure the instance
 		List<String> extensionsToFilter = new ArrayList<String>();
 		extensionsToFilter.add("txt");
+		extensionsToFilter.add("css");
 		Class<FingerprintMojo> clazz = FingerprintMojo.class;
 		Field extensionsToFilterField = clazz.getDeclaredField("extensionsToFilter");
 		extensionsToFilterField.setAccessible(true);
@@ -116,7 +117,7 @@ public class FingerprintMojoTest {
 
 		String url1 = "/resources/css/global.css";
 		String processedUrl1 = FingerprintMojo.generateTargetResourceFilename("1234567890", url1);
-		assertEquals("/resources/css/1234567890global.css", processedUrl1);
+		assertEquals("/resources/css/1234567890"+FingerprintMojo.FINGERPRINT_SEPERATOR+"global.css", processedUrl1);
 	}
 
 	@Test
@@ -126,7 +127,7 @@ public class FingerprintMojoTest {
 		File file = new File("src/test/resources/dummy-file-for-testing.txt");
 		File sourceDirectory = new File("src/test/resources/");
 		String targetHtmlFilename = FingerprintMojo.generateTargetFilename(sourceDirectory, file);
-		assertEquals("/dummy-file-for-testing.txt", targetHtmlFilename);
+		assertEquals("dummy-file-for-testing.txt", targetHtmlFilename.substring(1));
 	}
 
 	@Test
@@ -138,6 +139,9 @@ public class FingerprintMojoTest {
 		fingerprintMojo.findPagesToFilter(files, directory);
 		File expectedFile = new File("src/test/resources/dummy-file-for-testing.txt");
 		List<File> expectedFiles = new ArrayList<File>();
+		expectedFiles.add(new File("src/test/resources/css/app.css"));
+		expectedFiles.add(new File("src/test/resources/css/healthcheck.css"));
+		expectedFiles.add(new File("src/test/resources/css/themes/wds/css/custom-bootstrap.css"));
 		expectedFiles.add(expectedFile);
 		assertEquals(expectedFiles, files);
 	}

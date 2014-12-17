@@ -30,7 +30,11 @@ public class FingerprintMojo extends AbstractMojo {
 	public Pattern IMG_PATTERN = Pattern.compile("(<img.*?src=\")(.*?)(\".*?>)");
 	public Pattern CSS_IMG_PATTERN = Pattern.compile("(url\\([\",'])(.*?)([\",']\\))");
 	public Pattern JSTL_URL_PATTERN = Pattern.compile("(<c:url.*?value=\")(/{1}.*?)(\".*?>)");
-
+	public String DYNAMIC_SCRIPT_PATTERN_STRING = Pattern.quote("${")+"[\\S]+"+Pattern.quote("}");
+	public Pattern DYNAMIC_SCRIPT_PATTERN = Pattern.compile(DYNAMIC_SCRIPT_PATTERN_STRING);	
+	
+	//([^<%\w%>])\S*.js
+	
 	/**
 	 * Output directory
 	 */
@@ -60,10 +64,12 @@ public class FingerprintMojo extends AbstractMojo {
 	 */
 	@Parameter
 	private String cdn;
+	
+	public static final String FINGERPRINT_SEPERATOR = "-";
 
 	private final Map<String, String> processedFiles = new HashMap<String, String>();
 
-	@Override
+	//@Override
 	public void execute() throws MojoExecutionException {
 		if (!sourceDirectory.isDirectory()) {
 			throw new MojoExecutionException("source directory is not a directory: " + sourceDirectory.getAbsolutePath());
@@ -88,11 +94,14 @@ public class FingerprintMojo extends AbstractMojo {
 			processPage(curHTml);
 		}
 
+		
 		try {
 			copyDeepFiles(sourceDirectory, outputDirectory);
 		} catch (IOException e) {
 			throw new MojoExecutionException("unable to deep copy files", e);
 		}
+		
+		processJavascriptApp(sourceDirectory, outputDirectory);
 	}
 
 	private void processPage(File file) throws MojoExecutionException {
@@ -110,6 +119,7 @@ public class FingerprintMojo extends AbstractMojo {
 		outputFileData = processPattern(IMG_PATTERN, outputFileData.toString());
 		outputFileData = processPattern(CSS_IMG_PATTERN, outputFileData.toString());
 		outputFileData = processPattern(JSTL_URL_PATTERN, outputFileData.toString());
+		
 		String processedData = null;
 		if (trimTagExtensions != null && !trimTagExtensions.isEmpty()) {
 			String extension = getExtension(fileToProcess.getName());
@@ -155,6 +165,15 @@ public class FingerprintMojo extends AbstractMojo {
 		Matcher m = p.matcher(data);
 		while (m.find()) {
 			String curLink = m.group(2);
+			
+			String dynamicPath = null;
+			Matcher dm = DYNAMIC_SCRIPT_PATTERN.matcher(curLink);
+			if(dm.find()) {
+				dynamicPath = dm.group();
+				curLink = curLink.replaceAll(DYNAMIC_SCRIPT_PATTERN_STRING, "");
+				getLog().info("Replaced link: "+curLink);
+			}
+			
 			for (int i = 0; i < m.groupCount(); ++i) {
 				getLog().debug("group " + i + ": " + m.group(i));
 			}
@@ -191,10 +210,15 @@ public class FingerprintMojo extends AbstractMojo {
 			if (targetPath.length() != 0 && targetPath.charAt(0) != '/') {
 				getLog().warn("relative path detected: " + curLink);
 			}
+			
 
 			String targetURL;
 			if (cdn == null) {
-				targetURL = "$1" + targetPath + query + "$3";
+				String path = targetPath + query;
+				if(dynamicPath!=null) {
+					path =  Matcher.quoteReplacement(dynamicPath+path);
+				}
+				targetURL = "$1" + path + "$3";
 			} else {
 				targetURL = "$1" + cdn + targetPath + query + "$3";
 			}
@@ -205,6 +229,7 @@ public class FingerprintMojo extends AbstractMojo {
 				getLog().info("processing link: " + linkFile.getAbsolutePath());
 				continue;
 			}
+			targetFilename.getParentFile().mkdirs();
 			getLog().info("processing link: " + linkFile.getAbsolutePath() + " copy to: " + targetFilename.getAbsolutePath());
 			if (processedFiles.containsKey(linkFile.getAbsolutePath())) {
 				String pathWithinSource = linkFile.getAbsolutePath();
@@ -268,7 +293,7 @@ public class FingerprintMojo extends AbstractMojo {
 			return fingerprint + sourceFilename;
 		}
 		String filename = sourceFilename.substring(index + 1);
-		return sourceFilename.substring(0, index) + "/" + fingerprint + filename;
+		return sourceFilename.substring(0, index) + "/" + fingerprint + FINGERPRINT_SEPERATOR + filename;
 	}
 
 	static String generateTargetFilename(File sourceDirectory, File file) {
@@ -307,7 +332,9 @@ public class FingerprintMojo extends AbstractMojo {
 				continue;
 			}
 
-			copy(new FileInputStream(curFile), new FileOutputStream(new File(dstDir, curFile.getName())), 2048);
+			File targetFilename = new File(dstDir, curFile.getName());
+			targetFilename.getParentFile().mkdirs();
+			copy(new FileInputStream(curFile), new FileOutputStream(targetFilename), 2048);
 		}
 	}
 
@@ -405,4 +432,139 @@ public class FingerprintMojo extends AbstractMojo {
 		return extension;
 	}
 
+	private void processJavascriptApp(File sourceDirectory, File outputDirectory) throws MojoExecutionException {
+		File jsBaseDir = new File(sourceDirectory, "js");
+		File jsApps = new File(jsBaseDir, "app");
+		File jsLibs = new File(jsBaseDir, "lib");
+		
+		File jsOutputDir = new File(outputDirectory, "js");
+		
+		File appJs = new File(jsBaseDir, "app/app.js");
+		String appJsContent = readFile(appJs);		
+		
+		File mainJs = new File(jsBaseDir, "app/main.js");
+		String mainJsContent = readFile(mainJs);		
+		
+		List<File> jsFilesToFilter = new ArrayList<File>();
+		findAssetsToFilter(jsFilesToFilter, jsApps);
+		findAssetsToFilter(jsFilesToFilter, jsLibs);
+		
+		for (File jsFile : jsFilesToFilter) {
+			String fingerprint = generateFingerprint(readBinaryFile(jsFile));
+			String fileName = jsFile.getName();
+			//getLog().info("JS app name: "+fileName);
+			String fileNameKey = generateTargetFilename(jsBaseDir, jsFile).replaceAll(Pattern.quote("\\"), "/");
+			//getLog().info("JS app file path: "+fileNameKey);
+			
+			File fingeredBasePath = new File(fileNameKey);
+			String fbase = fingeredBasePath.getParent().replaceAll(Pattern.quote("\\"), "/");
+			String fingeredPath = fbase + "/" + fingerprint + FINGERPRINT_SEPERATOR + fileName;
+						
+			mainJsContent = mainJsContent.replace(fileNameKey.replace(".js", "")+"'", fingeredPath.replace(".js", "")+"'");			
+			
+			if(fileNameKey.startsWith("/app")) {
+				appJsContent = appJsContent.replaceFirst("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
+												"'"+fingeredPath.substring(5).replace(".js", "")+"'");
+				
+				mainJsContent = mainJsContent.replace("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
+													"'"+fingeredPath.substring(5).replace(".js", "")+"'");
+			}
+			
+			getLog().debug("Original path: "+ fileNameKey +" Fingered path: "+fingeredPath);
+			File targetFilename = new File(jsOutputDir, fingeredPath);
+			File orgFile = new File(jsBaseDir, fileNameKey);
+			targetFilename.getParentFile().mkdirs();
+			try {
+				copy(new FileInputStream(orgFile), new FileOutputStream(targetFilename), 2048);
+			} catch (FileNotFoundException e) {
+				throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
+			} catch (IOException e) {
+				throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
+			}		
+			
+		}
+		
+		writeFingerprintedFile(jsOutputDir, mainJs, mainJsContent);
+		writeFingerprintedFile(jsOutputDir, appJs, appJsContent);
+		
+		generateFingerprintForHtmlTemplates();
+	}
+	
+	private void generateFingerprintForHtmlTemplates() throws MojoExecutionException {
+		
+		File templateDir = new File(sourceDirectory, "templates");
+		File templateOutputDir = new File(outputDirectory, "templates");
+		
+		File templateJsFile = new File(sourceDirectory, "js/app/templates.js");
+		String templateJsContent = readFile(templateJsFile);
+		
+		List<File> htmlFilesToFilter = new ArrayList<File>();
+		findAssetsToFilter(htmlFilesToFilter, templateDir);
+		
+		for (File htmlFile : htmlFilesToFilter) {
+			String fingerprint = generateFingerprint(readBinaryFile(htmlFile));
+			String fileName = htmlFile.getName();
+			
+			
+			String fileNameKey = generateTargetFilename(templateDir, htmlFile).replaceAll(Pattern.quote("\\"), "/");
+			File fingeredBasePath = new File(fileNameKey);
+			String fbase = fingeredBasePath.getParent().replaceAll(Pattern.quote("\\"), "/");
+			if(!"/".equals(fbase)) {
+				fbase = fbase + "/";
+			}
+			String fingeredPath = fbase + fingerprint + FINGERPRINT_SEPERATOR + fileName;
+		
+			templateJsContent = templateJsContent.replace("'/templates"+fileNameKey+"'", "'/templates"+fingeredPath+"'");
+			
+			getLog().debug("Original path: "+ fileNameKey +" Fingered path: "+fingeredPath);
+			File targetFilename = new File(templateOutputDir, fingeredPath);
+			File orgFile = new File(templateDir, fileNameKey);
+			targetFilename.getParentFile().mkdirs();
+			try {
+				copy(new FileInputStream(orgFile), new FileOutputStream(targetFilename), 2048);
+			} catch (FileNotFoundException e) {
+				throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
+			} catch (IOException e) {
+				throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
+			}					
+		}
+		
+		File jsOutputDir = new File(outputDirectory, "js");
+		writeFingerprintedFile(jsOutputDir, templateJsFile, templateJsContent);
+	}
+	
+	private void writeFingerprintedFile(File jsOutputDir, File originalJsFile, String modifiedFileContent) throws MojoExecutionException {
+		//getLog().info("Modified File content\n"+modifiedFileContent);
+		String mainJsfingerprint = generateFingerprint(readBinaryFile(originalJsFile));
+		File mainOutputDir = new File(jsOutputDir, "app/");
+		mainOutputDir.mkdirs();
+		File mainJsModified = new File(mainOutputDir, mainJsfingerprint+FINGERPRINT_SEPERATOR+originalJsFile.getName());
+		try (FileWriter w = new FileWriter(mainJsModified)){
+			w.append(modifiedFileContent);
+			w.flush();							
+		} catch (IOException e) {
+			throw new MojoExecutionException("Unable to write file to: "+originalJsFile.getAbsolutePath(), e);
+		}		
+	}
+	
+	public void findAssetsToFilter(List<File> output, File source) {
+		if (!source.isDirectory()) {
+			return;
+		}
+		File[] subFiles = source.listFiles();
+		for (File curFile : subFiles) {
+			if (curFile.isDirectory()) {
+				findAssetsToFilter(output, curFile);
+				continue;
+			}
+
+			if (!curFile.isFile()) {
+				continue;
+			}
+
+			//getLog().info("Adding js "+curFile.getPath());
+			output.add(curFile);
+		}
+	}	
+	
 }
