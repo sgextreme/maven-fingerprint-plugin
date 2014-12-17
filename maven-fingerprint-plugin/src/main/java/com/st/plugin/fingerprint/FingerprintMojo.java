@@ -495,7 +495,7 @@ public class FingerprintMojo extends AbstractMojo {
 		File templateDir = new File(sourceDirectory, "templates");
 		File templateOutputDir = new File(outputDirectory, "templates");
 		
-		File templateJsFile = new File(sourceDirectory, "js/app/templates.js");
+		File templateJsFile = new File(sourceDirectory, "js/app/app-templates.js");
 		String templateJsContent = readFile(templateJsFile);
 		
 		List<File> htmlFilesToFilter = new ArrayList<File>();
