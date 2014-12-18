@@ -140,7 +140,6 @@ public class FingerprintMojoTest {
 		File expectedFile = new File("src/test/resources/dummy-file-for-testing.txt");
 		List<File> expectedFiles = new ArrayList<File>();
 		expectedFiles.add(new File("src/test/resources/css/app.css"));
-		expectedFiles.add(new File("src/test/resources/css/healthcheck.css"));
 		expectedFiles.add(new File("src/test/resources/css/themes/wds/css/custom-bootstrap.css"));
 		expectedFiles.add(expectedFile);
 		assertEquals(expectedFiles, files);
