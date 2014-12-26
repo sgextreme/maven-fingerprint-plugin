@@ -463,8 +463,11 @@ public class FingerprintMojo extends AbstractMojo {
 			mainJsContent = mainJsContent.replace(fileNameKey.replace(".js", "")+"'", fingeredPath.replace(".js", "")+"'");			
 			
 			if(fileNameKey.startsWith("/app")) {
-				appJsContent = appJsContent.replaceFirst("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
-												"'"+fingeredPath.substring(5).replace(".js", "")+"'");
+				// do not replace self
+				if(!fileNameKey.equals("/app/app.js")) {
+					appJsContent = appJsContent.replaceFirst("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
+													"'"+fingeredPath.substring(5).replace(".js", "")+"'");
+				}
 				
 				mainJsContent = mainJsContent.replace("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
 													"'"+fingeredPath.substring(5).replace(".js", "")+"'");
