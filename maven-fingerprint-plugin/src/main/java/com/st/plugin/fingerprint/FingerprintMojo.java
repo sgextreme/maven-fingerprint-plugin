@@ -450,40 +450,43 @@ public class FingerprintMojo extends AbstractMojo {
 		findAssetsToFilter(jsFilesToFilter, jsLibs);
 		
 		for (File jsFile : jsFilesToFilter) {
-			String fingerprint = generateFingerprint(readBinaryFile(jsFile));
-			String fileName = jsFile.getName();
-			//getLog().info("JS app name: "+fileName);
-			String fileNameKey = generateTargetFilename(jsBaseDir, jsFile).replaceAll(Pattern.quote("\\"), "/");
-			//getLog().info("JS app file path: "+fileNameKey);
-			
-			File fingeredBasePath = new File(fileNameKey);
-			String fbase = fingeredBasePath.getParent().replaceAll(Pattern.quote("\\"), "/");
-			String fingeredPath = fbase + "/" + fingerprint + FINGERPRINT_SEPERATOR + fileName;
-						
-			mainJsContent = mainJsContent.replace(fileNameKey.replace(".js", "")+"'", fingeredPath.replace(".js", "")+"'");			
-			
-			if(fileNameKey.startsWith("/app")) {
-				// do not replace self
-				if(!fileNameKey.equals("/app/app.js")) {
-					appJsContent = appJsContent.replaceFirst("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
-													"'"+fingeredPath.substring(5).replace(".js", "")+"'");
+
+			String fileName = jsFile.getName();			
+			if(!fileName.equals("app.js") && !fileName.equals("main.js") && !fileName.equals("app-templates.js")) {
+				String fingerprint = generateFingerprint(readBinaryFile(jsFile));
+				//getLog().info("JS app name: "+fileName);
+				String fileNameKey = generateTargetFilename(jsBaseDir, jsFile).replaceAll(Pattern.quote("\\"), "/");
+				//getLog().info("JS app file path: "+fileNameKey);
+				
+				File fingeredBasePath = new File(fileNameKey);
+				String fbase = fingeredBasePath.getParent().replaceAll(Pattern.quote("\\"), "/");
+				String fingeredPath = fbase + "/" + fingerprint + FINGERPRINT_SEPERATOR + fileName;
+							
+				mainJsContent = mainJsContent.replace(fileNameKey.replace(".js", "")+"'", fingeredPath.replace(".js", "")+"'");			
+				
+				if(fileNameKey.startsWith("/app")) {
+					// do not replace self
+					if(!fileNameKey.equals("/app/app.js")) {
+						appJsContent = appJsContent.replaceFirst("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
+														"'"+fingeredPath.substring(5).replace(".js", "")+"'");
+					}
+					
+					mainJsContent = mainJsContent.replace("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
+														"'"+fingeredPath.substring(5).replace(".js", "")+"'");
 				}
 				
-				mainJsContent = mainJsContent.replace("'"+fileNameKey.substring(5).replace(".js", "")+"'", 
-													"'"+fingeredPath.substring(5).replace(".js", "")+"'");
+				getLog().debug("Original path: "+ fileNameKey +" Fingered path: "+fingeredPath);
+				File targetFilename = new File(jsOutputDir, fingeredPath);
+				File orgFile = new File(jsBaseDir, fileNameKey);
+				targetFilename.getParentFile().mkdirs();
+				try {
+					copy(new FileInputStream(orgFile), new FileOutputStream(targetFilename), 2048);
+				} catch (FileNotFoundException e) {
+					throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
+				} catch (IOException e) {
+					throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
+				}	
 			}
-			
-			getLog().debug("Original path: "+ fileNameKey +" Fingered path: "+fingeredPath);
-			File targetFilename = new File(jsOutputDir, fingeredPath);
-			File orgFile = new File(jsBaseDir, fileNameKey);
-			targetFilename.getParentFile().mkdirs();
-			try {
-				copy(new FileInputStream(orgFile), new FileOutputStream(targetFilename), 2048);
-			} catch (FileNotFoundException e) {
-				throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
-			} catch (IOException e) {
-				throw new MojoExecutionException("Unable to copy file from: "+orgFile.getAbsolutePath()+" to: "+targetFilename.getAbsolutePath(), e);
-			}		
 			
 		}
 		
@@ -538,7 +541,7 @@ public class FingerprintMojo extends AbstractMojo {
 	
 	private void writeFingerprintedFile(File jsOutputDir, File originalJsFile, String modifiedFileContent) throws MojoExecutionException {
 		//getLog().info("Modified File content\n"+modifiedFileContent);
-		String mainJsfingerprint = generateFingerprint(readBinaryFile(originalJsFile));
+		String mainJsfingerprint = generateFingerprint(modifiedFileContent.getBytes());
 		File mainOutputDir = new File(jsOutputDir, "app/");
 		mainOutputDir.mkdirs();
 		File mainJsModified = new File(mainOutputDir, mainJsfingerprint+FINGERPRINT_SEPERATOR+originalJsFile.getName());
