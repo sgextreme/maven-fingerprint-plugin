@@ -28,6 +28,7 @@ public class FingerprintMojoTest {
 		List<String> extensionsToFilter = new ArrayList<String>();
 		extensionsToFilter.add("txt");
 		extensionsToFilter.add("css");
+		extensionsToFilter.add("jsp");
 		Class<FingerprintMojo> clazz = FingerprintMojo.class;
 		Field extensionsToFilterField = clazz.getDeclaredField("extensionsToFilter");
 		extensionsToFilterField.setAccessible(true);
@@ -141,6 +142,7 @@ public class FingerprintMojoTest {
 		List<File> expectedFiles = new ArrayList<File>();
 		expectedFiles.add(new File("src/test/resources/css/app.css"));
 		expectedFiles.add(new File("src/test/resources/css/themes/wds/css/custom-bootstrap.css"));
+		expectedFiles.add(new File("src/test/resources/index.jsp"));
 		expectedFiles.add(expectedFile);
 		assertEquals(expectedFiles, files);
 	}

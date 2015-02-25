@@ -6,6 +6,7 @@ define([
         'angular-cookies',
         'angular-animate',
         'ng-tags-input',
+        'app-templates',
         'services/StorageService',
         'services/HttpService',
         'services/CollectionService',
